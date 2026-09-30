@@ -8,23 +8,37 @@ rebel-readline.
 
 ## Quick try
 
+Current `rebel-readline-cljs` uses ClojureScript 1.12.x and requires
+Java 21 or newer. This project includes a `.java-version` file for
+`jenv` users that selects Java 26.
+
+On Java 22 and newer, JLine can emit native access warnings while starting the
+terminal. The REPL can still start normally. To suppress the warning, pass
+`-J--enable-native-access=ALL-UNNAMED` to the Clojure CLI.
+
 #### Clojure tools
 
 If you want to try this really quickly [install the Clojure CLI tools](https://clojure.org/guides/getting_started) and then invoke this:
 
 ```shell
-clojure -Sdeps '{:deps {com.bhauman/rebel-readline-cljs {:mvn/version "0.1.4"}}}' -m rebel-readline.cljs.main
+clojure -Sdeps '{:deps {com.bhauman/rebel-readline-cljs {:mvn/version "0.1.11"}}}' -m rebel-readline.cljs.main
 ```
 
-That should start a Nashorn ClojureScript REPL that takes it's input
+That should start a Node-backed ClojureScript REPL that takes its input
 from the Rebel readline editor.
+
+With the Java native access warning suppressed:
+
+```shell
+clojure -J--enable-native-access=ALL-UNNAMED -Sdeps '{:deps {com.bhauman/rebel-readline-cljs {:mvn/version "0.1.11"}}}' -m rebel-readline.cljs.main
+```
 
 Note that I am using the `clojure` command and not the `clj` command
 because the latter wraps the process with another readline program (`rlwrap`).
 
 #### Leiningen
 
-Add `[com.bhauman/rebel-readline-cljs "0.1.4"]` to the dependencies in your
+Add `[com.bhauman/rebel-readline-cljs "0.1.11"]` to the dependencies in your
 `project.clj` then start a REPL like this:
 
 ```shell
@@ -34,10 +48,10 @@ lein trampoline run -m rebel-readline.cljs.main
 #### Clone this repo
 
 Clone this repo and then from the `rebel-readline-cljs` sub-directory
-typing `lein trampoline run -m rebel-readline.cljs.main` will get you into
+typing `clojure -M:dev -m rebel-readline.cljs.main` will get you into
 a Clojure REPL with the readline editor working.
 
-Note that `lein run -m rebel-readline.cljs.main` will not work!
+Node.js must be available on `PATH`.
 
 ## Usage
 

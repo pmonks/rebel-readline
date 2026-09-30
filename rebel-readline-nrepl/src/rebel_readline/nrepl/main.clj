@@ -19,7 +19,7 @@
 
 (defn repl-caught [e]
   (println "Internal REPL Error: this shouldn't happen. :repl/*e for stacktrace")
-  (some-> @api/*line-reader* :repl/error (reset! e))
+  (some-> @api/*state* :repl/error (reset! e))
   (clojure.main/repl-caught e))
 
 (defn read-eval-print-fn [{:keys [read printer request-prompt request-exit]}]
@@ -28,16 +28,16 @@
       (let [input (read request-prompt request-exit)]
         (cond
           (#{request-prompt request-exit} input) input
-          (not (clj-service/polling? @api/*line-reader*)) request-exit
+          (not (clj-service/polling? @api/*state*)) request-exit
           :else
           (do
             (api/toggle-input api/*terminal* false)
             (clj-service/eval-code
-             @api/*line-reader*
+             @api/*state*
              input
              (bound-fn*
               (cond->> identity
-                (not (:background-print @api/*line-reader*))
+                (not (:background-print @api/*state*))
                 (clj-service/out-err
                  #(do (print %) (flush))
                  #(do (print %) (flush)))
@@ -47,7 +47,7 @@
                         (api/toggle-input api/*terminal* true)
                         (try
                           ;; we could use a more sophisticated input reader here
-                          (clj-service/send-input @api/*line-reader* (clojure.core/read-line))
+                          (clj-service/send-input @api/*state* (clojure.core/read-line))
                           (catch Throwable e
                             (repl-caught e))
                           (finally
@@ -68,36 +68,36 @@
                           :request-exit request-exit})]
     (try
       (clj-service/tool-eval-code
-       @api/*line-reader*
+       @api/*state*
        (pr-str `(do
                   (require 'clojure.main)
                   (require 'clojure.repl))))
       (catch Throwable e
         (repl-caught e)))
     (loop []
-      (when (and (clj-service/polling? @api/*line-reader*)
+      (when (and (clj-service/polling? @api/*state*)
                  (try
                    (not (identical? (read-eval-print) request-exit))
-	           (catch Throwable e
+                   (catch Throwable e
                      (repl-caught e)
                      true)))
         (recur)))))
 
 (defn start-repl* [options]
   (core/with-line-reader
-      (clj-line-reader/create
-       (clj-service/create
-        (merge (when api/*line-reader* @api/*line-reader*)
-               options)))
-    (binding [*out* (api/safe-terminal-writer api/*line-reader*)]
-      (clj-service/register-background-printing api/*line-reader*)
-      (clj-service/start-polling @api/*line-reader*)
+    (clj-line-reader/create
+     (clj-service/create
+      (merge (when api/*state* @api/*state*)
+             options)))
+    (binding [*out* (api/safe-terminal-writer (api/line-reader))]
+      (clj-service/register-background-printing api/*state*)
+      (clj-service/start-polling @api/*state*)
       (.handle ^Terminal api/*terminal*
                Terminal$Signal/INT
-               (let [line-reader api/*line-reader*]
+               (let [state api/*state*]
                  (proxy [Terminal$SignalHandler] []
                    (handle [sig]
-                     (clj-service/interrupt @line-reader)))))
+                     (clj-service/interrupt @state)))))
       (println (core/help-message))
       (repl-loop))))
 
@@ -109,26 +109,86 @@
 (s/def ::host ::sym-or-string)
 (s/def ::background-print boolean?)
 (s/def ::port (s/and number? #(< 0 % 0x10000)))
+(s/def ::port-file string?)
 (s/def ::arg-map (s/merge
-                  (s/keys :req-un [::port]
-                          :opt-un
-                          [::host
-                           ::tls-keys-file
-                           ::background-print])
+                  (s/keys :opt-un [::port
+                                   ::port-file
+                                   ::host
+                                   ::tls-keys-file
+                                   ::background-print])
                   :rebel-readline.tools/arg-map))
+
+(s/def ::resolved-arg-map (s/merge
+                           (s/keys :req-un [::port])
+                           ::arg-map))
+
+(def default-port-file ".nrepl-port")
+
+(def missing-port-message
+  "Must supply an nREPL port with --port PORT or :port PORT, run from a directory containing a .nrepl-port file, or supply --port-file PORTFILE / :port-file PORTFILE.")
+
+(defn port-file-error-message [file]
+  (if (.exists (io/file file))
+    (format "nREPL port file %s did not contain a valid port." file)
+    (format "nREPL port file %s was not found." file)))
+
+(defn read-port-file [file]
+  (let [file (io/file file)]
+    (when (.exists file)
+      (try
+        (some-> (slurp file)
+                string/trim
+                not-empty
+                Long/parseLong)
+        (catch NumberFormatException _ nil)))))
+
+(defn resolve-options [options]
+  (let [options   (or options {})
+        port-file (or (:port-file options) default-port-file)
+        port      (or (:port options) (read-port-file port-file))]
+    (when (and (not port) (contains? options :port-file))
+      (throw (ex-info (port-file-error-message port-file)
+                      {:type :rebel-readline/port-file-error
+                       :port-file port-file
+                       :config options})))
+    (cond-> (dissoc options :port-file)
+      port (assoc :port port))))
+
+(defn conform-options [options]
+  (let [resolved-options (resolve-options options)]
+    (cond
+      (not (:port resolved-options))
+      (throw (ex-info missing-port-message
+                      {:type :rebel-readline/missing-port
+                       :config resolved-options}))
+
+      (s/valid? ::resolved-arg-map resolved-options)
+      (s/conform ::resolved-arg-map resolved-options)
+
+      :else
+      (throw (ex-info "Invalid configuration"
+                      {:type :rebel-readline/config-spec-error
+                       :config resolved-options
+                       :spec ::resolved-arg-map})))))
 
 (defn start-repl [options]
   (try
-    (start-repl*
-     (merge
-      clj-line-reader/default-config
-      (tools/user-config ::arg-map options)
-      {:background-print true}
-      (s/conform ::arg-map options)))
+    (let [explicit-options (or options {})
+          user-options (tools/user-config ::arg-map explicit-options)
+          options (cond-> (conform-options (merge user-options explicit-options))
+                    (not (contains? explicit-options :background-print))
+                    (dissoc :background-print))]
+      (start-repl*
+       (merge
+        clj-line-reader/default-config
+        {:background-print true}
+        options)))
     (catch clojure.lang.ExceptionInfo e
-      (let [{:keys [spec config] :as err} (ex-data e)]
-        (if (-> err :type (= :rebel-readline/config-spec-error))
-          (tools/explain-config spec config)
+      (let [{:keys [spec config type]} (ex-data e)]
+        (case type
+          (:rebel-readline/port-file-error
+           :rebel-readline/missing-port)    (println (ex-message e))
+          :rebel-readline/config-spec-error (tools/explain-config spec config)
           (throw e))))))
 
 ;; CLI
@@ -137,12 +197,11 @@
   ;; An option with a required argument
   (vec
    (concat
-    [["-p" "--port PORT" "nREPL server Port number"
+    [["-p" "--port PORT" "nREPL server Port number. Defaults to .nrepl-port when present"
       :parse-fn #(Long/parseLong %)
-      :required "PORT"
-      :default-desc "7888"
-      :missing "Must supply a -p PORT to connect to"
       :validate [#(< 0 % 0x10000) "Must be a number between 0 and 65536"]]
+     [nil "--port-file PORTFILE" "Path to nREPL port file. Defaults to .nrepl-port"
+      :parse-fn (comp str tools/absolutize-file)]
      ["-H" "--host HOST" "nREPL Server host"
       :default "localhost"
       :validate [string? "Must be a string"]]
@@ -165,7 +224,8 @@
         "See the full README at"
         "at https://github.com/bhauman/rebel-readline-nrepl"
         ""
-        "Usage: clojure -M -m rebel-readline.nrepl.main --port 50668"
+        "Usage: clojure -M -m rebel-readline.nrepl.main [--port 50668]"
+        "If --port is omitted, --port-file is used when supplied, otherwise .nrepl-port in the current directory is used when present."
         ""
         "Options:"
         options-summary]
@@ -198,4 +258,3 @@
       (start-repl options))))
 
 #_(-main "--port" "55" "--background-print-off")
-

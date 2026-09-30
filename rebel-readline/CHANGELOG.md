@@ -1,3 +1,22 @@
+# 0.1.11 nREPL port files and Clojure tool install docs
+
+* `rebel-readline-nrepl` detects `.nrepl-port` in the current directory and supports `:port-file` / `--port-file`.
+* Document Git `clojure -Ttools install-latest` commands for `rebel-readline` and `rebel-readline-nrepl`.
+* Document Java 22+ native access warnings.
+* `rebel-readline-cljs` and `rebel-readline-nrepl` now depend on `rebel-readline` 0.1.11.
+
+# 0.1.10 History permissions and modern CLJS release
+
+* Restrict `.rebel_readline_history` to owner-only permissions on POSIX filesystems and warn instead of aborting when the file cannot be secured.
+* Fixed ClojureScript alias completions in `rebel-readline-cljs`.
+* Updated `rebel-readline-cljs` to ClojureScript 1.12.145 with Java 21+ and Node-backed dev entrypoints.
+* `rebel-readline-cljs` and `rebel-readline-nrepl` now depend on `rebel-readline` 0.1.10.
+
+# 0.1.8 Completion namespace fix
+
+* Fixed local completions for vars loaded in the current namespace after the Compliment upgrade.
+* `rebel-readline-cljs` and `rebel-readline-nrepl` now depend on this fixed `rebel-readline` release.
+
 # 0.1.7 JLine 3.30.0 upgrade
 
 * Upgraded JLine from 3.21.0 to 3.30.0
