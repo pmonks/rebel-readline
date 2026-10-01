@@ -1,9 +1,9 @@
 {:deps {org.clojure/clojure {:mvn/version "1.12.6"}
-        org.jline/jline-reader {:mvn/version "4.0.12"}
-        org.jline/jline-terminal {:mvn/version "4.0.12"}
-        org.jline/jline-terminal-jni {:mvn/version "4.0.12"}
-        dev.weavejester/cljfmt {:mvn/version "0.16.3"}
-        compliment/compliment {:mvn/version "0.8.0"}}
+        org.jline/jline-reader {:mvn/version "4.4.6"}
+        org.jline/jline-terminal {:mvn/version "4.4.6"}
+        org.jline/jline-terminal-jni {:mvn/version "4.4.6"}
+        dev.weavejester/cljfmt {:mvn/version "0.16.6"}
+        compliment/compliment {:mvn/version "0.8.1"}}
  :tools/usage {:ns-default rebel-readline.tool}
  :aliases {:repl-tool {:exec-fn rebel-readline.tool/repl}
            :rebel {:main-opts  ["-m" "rebel-readline.main"]}
@@ -12,7 +12,9 @@
            ;; build
            :neil {:project {:name com.bhauman/rebel-readline
                             :version "0.1.12-SNAPSHOT"}}
-           :build {:deps {io.github.clojure/tools.build {:git/tag "v0.10.13"
+           :build {:deps {io.github.clojure/tools.build {:git/tag "v0.10.14"
                                                          :git/sha "ae52edf"}
-                          slipset/deps-deploy {:mvn/version "0.2.3"}}
-                   :ns-default build}}}
+                          slipset/deps-deploy {:mvn/version "0.2.5"}}
+                   :ns-default build}
+           :outdated {:extra-deps {com.github.liquidz/antq {:mvn/version "RELEASE"}}
+                      :main-opts ["-m" "antq.core"]}}}
